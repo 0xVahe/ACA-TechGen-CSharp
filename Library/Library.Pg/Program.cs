@@ -1,18 +1,27 @@
-﻿using Microsoft.EntityFrameworkCore;
-using Library.Pg.Data;
-using Library.Pg.Models;
+﻿using Library.Pg.Data;
+using Library.Pg.HealthChecks;
+using Microsoft.EntityFrameworkCore;
 
-namespace Library.Pg;
+var builder = WebApplication.CreateBuilder(args);
 
-class Program
+builder.Services.AddDbContext<LibraryContext>(options =>
+    options.UseNpgsql("Host=localhost; Port=5434; Database=library; Username=postgres; Password=postgres"));
+
+builder.Services.AddHttpClient("LibraryApiClient", client =>
 {
-    static async Task Main(string[] args)
-    {
-        using (var db = new LibraryContext())
-        {
-            db.Database.EnsureDeleted();
-            db.Database.EnsureCreated();
-        }
+    client.BaseAddress = new Uri("https://localhost:7001/"); 
+    client.Timeout = TimeSpan.FromSeconds(5);
+});
 
-    }
-}
+builder.Services.AddHealthChecks()
+    .AddCheck<LibraryRoutesHealthCheck>("library_http_routes_check");
+
+builder.Services.AddControllers();
+
+var app = builder.Build();
+
+app.MapHealthChecks("/health");
+
+app.MapControllers();
+
+app.Run();

@@ -8,7 +8,10 @@ public static class Simulation
 {
     public static async Task Run()
     {
-        using (var db = new LibraryContext())
+        var optionsBuilder = new DbContextOptionsBuilder<LibraryContext>();
+        optionsBuilder.UseNpgsql("Host=localhost; Port=5434; Database=library; Username=postgres; Password=postgres");
+
+        using (var db = new LibraryContext(optionsBuilder.Options))
         {
             db.Database.EnsureDeleted();
             db.Database.EnsureCreated();
@@ -25,7 +28,7 @@ public static class Simulation
         }
     }
     
-        private static void Seed(LibraryContext db)
+    private static void Seed(LibraryContext db)
     {
         Console.WriteLine("=== 3.3 Observe Generated Key ===");
         var firstBook = new Book

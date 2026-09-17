@@ -7,13 +7,17 @@ namespace Library.Pg.Data;
 
 public class LibraryContext : DbContext
 {
-    private const string Cs = "Host=localhost; Port=5434; Database=library; Username=postgres; Password=postgres";
+    public LibraryContext(DbContextOptions<LibraryContext> options) : base(options) { }
 
     public DbSet<Book> Books => Set<Book>();
 
     protected override void OnConfiguring(DbContextOptionsBuilder options)
     {
-        options.UseNpgsql(Cs);
+        if (!options.IsConfigured)
+        {
+            options.UseNpgsql("Host=localhost; Port=5434; Database=library; Username=postgres; Password=postgres");
+        }
+
         options.LogTo(
             Console.WriteLine,
             new[] { DbLoggerCategory.Database.Command.Name },
