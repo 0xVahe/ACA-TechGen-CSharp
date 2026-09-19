@@ -32,6 +32,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(t => t.Title).IsRequired().HasMaxLength(200);
             e.Property(t => t.Description).HasMaxLength(1000);
             e.Property(t => t.IsCompleted).HasDefaultValue(false);
+            e.Property(t => t.Likes);
             e.Property(t => t.CreatedAt).HasDefaultValueSql("NOW()");
         });
     }

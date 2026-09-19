@@ -15,7 +15,7 @@ public class TodoController(AppDbContext context) : ControllerBase
     {
         var tasks = await context.Tasks
             .AsNoTracking()
-            .Select(t => new TaskResponseDto(t.Id, t.Title, t.Description, t.IsCompleted, t.CreatedAt))
+            .Select(t => new TaskResponseDto(t.Id, t.Title, t.Description, t.IsCompleted, t.Likes, t.CreatedAt))
             .ToListAsync();
 
         return Ok(tasks);
@@ -31,7 +31,7 @@ public class TodoController(AppDbContext context) : ControllerBase
         if (task is null)
             return NotFound();
 
-        return Ok(new TaskResponseDto(task.Id, task.Title, task.Description, task.IsCompleted, task.CreatedAt));
+        return Ok(new TaskResponseDto(task.Id, task.Title, task.Description, task.IsCompleted, task.Likes, task.CreatedAt));
     }
 
     [HttpPost]
@@ -46,7 +46,7 @@ public class TodoController(AppDbContext context) : ControllerBase
         context.Tasks.Add(task);
         await context.SaveChangesAsync();
 
-        var response = new TaskResponseDto(task.Id, task.Title, task.Description, task.IsCompleted, task.CreatedAt);
+        var response = new TaskResponseDto(task.Id, task.Title, task.Description, task.IsCompleted,task.Likes, task.CreatedAt);
         
         return CreatedAtAction(nameof(GetById), new { id = task.Id }, response);
     }
@@ -66,6 +66,21 @@ public class TodoController(AppDbContext context) : ControllerBase
         await context.SaveChangesAsync();
 
         return NoContent();
+    }
+
+    [HttpPatch("{id:int}")]
+    public async Task<IActionResult> Like(int id)
+    {
+        var task = await context.Tasks.FindAsync(id);
+
+        if (task is null)
+            return NotFound();
+
+        task.Likes++;
+
+        await context.SaveChangesAsync();
+
+        return Ok();
     }
 
     [HttpDelete("{id:int}")]

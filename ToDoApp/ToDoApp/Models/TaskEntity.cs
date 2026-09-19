@@ -6,5 +6,6 @@ public class TaskEntity
     public string Title { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public bool IsCompleted { get; set; }
+    public long Likes { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
