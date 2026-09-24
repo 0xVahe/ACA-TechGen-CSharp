@@ -1,99 +1,129 @@
-﻿using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using ToDoApp.Data;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using ToDoApp.Auth;
 using ToDoApp.Dtos;
-using ToDoApp.Models;
+using ToDoApp.Services;
 
 namespace ToDoApp.Controllers;
 
 [ApiController]
+[Authorize]
 [Route("api/[controller]")]
-public class TodoController(AppDbContext context) : ControllerBase
+public class TodoController(ITodoService todoService) : ControllerBase
 {
     [HttpGet]
-    public async Task<ActionResult<List<TaskResponseDto>>> GetAll()
+    public async Task<ActionResult<List<TodoItemResponseDto>>> GetMine(CancellationToken cancellationToken)
     {
-        var tasks = await context.Tasks
-            .AsNoTracking()
-            .Select(t => new TaskResponseDto(t.Id, t.Title, t.Description, t.IsCompleted, t.Likes, t.CreatedAt))
-            .ToListAsync();
-
-        return Ok(tasks);
+        var userId = User.GetUserId();
+        var todos = await todoService.GetMineAsync(userId, cancellationToken);
+        return Ok(todos);
     }
 
-    [HttpGet("{id:int}")]
-    public async Task<ActionResult<TaskResponseDto>> GetById(int id)
+    [HttpGet("public")]
+    public async Task<ActionResult<List<TodoItemResponseDto>>> GetFeed(CancellationToken cancellationToken)
     {
-        var task = await context.Tasks
-            .AsNoTracking()
-            .FirstOrDefaultAsync(t => t.Id == id);
+        var userId = User.GetUserId();
+        var todos = await todoService.GetFeedAsync(userId, cancellationToken);
+        return Ok(todos);
+    }
 
-        if (task is null)
-            return NotFound();
+    [HttpGet("{id:guid}")]
+    public async Task<ActionResult<TodoItemResponseDto>> GetById(Guid id, CancellationToken cancellationToken)
+    {
+        var userId = User.GetUserId();
+        var (todo, status) = await todoService.GetByIdAsync(id, userId, cancellationToken);
 
-        return Ok(new TaskResponseDto(task.Id, task.Title, task.Description, task.IsCompleted, task.Likes, task.CreatedAt));
+        return status switch
+        {
+            TodoOperationResult.Success => Ok(todo),
+            TodoOperationResult.NotFound => NotFound(),
+            TodoOperationResult.Forbidden => StatusCode(StatusCodes.Status403Forbidden),
+            _ => BadRequest()
+        };
     }
 
     [HttpPost]
-    public async Task<ActionResult<TaskResponseDto>> Create(CreateTaskDto dto)
+    public async Task<ActionResult<TodoItemResponseDto>> Create(CreateTodoItemDto dto, CancellationToken cancellationToken)
     {
-        var task = new TaskEntity
+        var userId = User.GetUserId();
+        var created = await todoService.CreateAsync(userId, dto, cancellationToken);
+        return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
+    }
+
+    [HttpPut("{id:guid}")]
+    public async Task<IActionResult> Update(Guid id, UpdateTodoItemDto dto, CancellationToken cancellationToken)
+    {
+        var userId = User.GetUserId();
+        var status = await todoService.UpdateAsync(id, userId, dto, cancellationToken);
+
+        return status switch
         {
-            Title = dto.Title,
-            Description = dto.Description
+            TodoOperationResult.Success => NoContent(),
+            TodoOperationResult.NotFound => NotFound(),
+            TodoOperationResult.Forbidden => StatusCode(StatusCodes.Status403Forbidden),
+            _ => BadRequest()
         };
-
-        context.Tasks.Add(task);
-        await context.SaveChangesAsync();
-
-        var response = new TaskResponseDto(task.Id, task.Title, task.Description, task.IsCompleted,task.Likes, task.CreatedAt);
-        
-        return CreatedAtAction(nameof(GetById), new { id = task.Id }, response);
     }
 
-    [HttpPut("{id:int}")]
-    public async Task<IActionResult> Update(int id, UpdateTaskDto dto)
+    [HttpPatch("{id:guid}/visible")]
+    public async Task<IActionResult> UpdateVisibility(Guid id, UpdateVisibilityDto dto, CancellationToken cancellationToken)
     {
-        var task = await context.Tasks.FindAsync(id);
+        var userId = User.GetUserId();
+        var status = await todoService.UpdateVisibilityAsync(id, userId, dto.Visibility, cancellationToken);
 
-        if (task is null)
-            return NotFound();
-
-        task.Title = dto.Title;
-        task.Description = dto.Description;
-        task.IsCompleted = dto.IsCompleted;
-
-        await context.SaveChangesAsync();
-
-        return NoContent();
+        return status switch
+        {
+            TodoOperationResult.Success => Ok(),
+            TodoOperationResult.NotFound => NotFound(),
+            TodoOperationResult.Forbidden => StatusCode(StatusCodes.Status403Forbidden),
+            _ => BadRequest()
+        };
     }
 
-    [HttpPatch("{id:int}")]
-    public async Task<IActionResult> Like(int id)
+    [HttpPost("{id:guid}/like")]
+    public async Task<IActionResult> Like(Guid id, CancellationToken cancellationToken)
     {
-        var task = await context.Tasks.FindAsync(id);
+        var userId = User.GetUserId();
+        var status = await todoService.VoteAsync(id, userId, true, cancellationToken);
 
-        if (task is null)
-            return NotFound();
-
-        task.Likes++;
-
-        await context.SaveChangesAsync();
-
-        return Ok();
+        return status switch
+        {
+            TodoOperationResult.Success => Ok(),
+            TodoOperationResult.NotFound => NotFound(),
+            TodoOperationResult.Forbidden => StatusCode(StatusCodes.Status403Forbidden),
+            TodoOperationResult.Invalid => BadRequest(new { message = "Cannot vote on your own post." }),
+            _ => BadRequest()
+        };
     }
 
-    [HttpDelete("{id:int}")]
-    public async Task<IActionResult> Delete(int id)
+    [HttpPost("{id:guid}/dislike")]
+    public async Task<IActionResult> Dislike(Guid id, CancellationToken cancellationToken)
     {
-        var task = await context.Tasks.FindAsync(id);
+        var userId = User.GetUserId();
+        var status = await todoService.VoteAsync(id, userId, false, cancellationToken);
 
-        if (task is null)
-            return NotFound();
+        return status switch
+        {
+            TodoOperationResult.Success => Ok(),
+            TodoOperationResult.NotFound => NotFound(),
+            TodoOperationResult.Forbidden => StatusCode(StatusCodes.Status403Forbidden),
+            TodoOperationResult.Invalid => BadRequest(new { message = "Cannot vote on your own post." }),
+            _ => BadRequest()
+        };
+    }
 
-        context.Tasks.Remove(task);
-        await context.SaveChangesAsync();
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
+    {
+        var userId = User.GetUserId();
+        var status = await todoService.DeleteAsync(id, userId, cancellationToken);
 
-        return NoContent();
+        return status switch
+        {
+            TodoOperationResult.Success => NoContent(),
+            TodoOperationResult.NotFound => NotFound(),
+            TodoOperationResult.Forbidden => StatusCode(StatusCodes.Status403Forbidden),
+            _ => BadRequest()
+        };
     }
 }
